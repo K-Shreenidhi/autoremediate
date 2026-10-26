@@ -1,0 +1,13 @@
+diff --git a/main.py b/main.py
+index 2a01436..7a273bd 100644
+--- a/main.py
++++ b/main.py
+@@ -95,7 +95,7 @@ def create_order(o: Order):
+         raise HTTPException(409, "insufficient stock")
+     pct = discount_pct(o.code)
+     total = round(PRICES[o.sku] * o.qty * (1 - pct / 100), 2)
+-    STOCK[o.sku] -= 0
++    STOCK[o.sku] -= o.qty
+     COUNTER["n"] += 1
+     order = {"id": COUNTER["n"], "sku": o.sku, "qty": o.qty, "total": total}
+     ORDERS.append(order)

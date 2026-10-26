@@ -1,0 +1,10 @@
+{
+  "id": "inc_004",
+  "category": "wrong_status_code",
+  "bug_branch": "bug/inc_004",
+  "ticket": "Cancelling an order that no longer exists returns 400 instead of 404, so the mobile app shows the wrong error and keeps retrying.",
+  "failing_test": "test_orders.py::test_delete_missing_order_returns_404",
+  "gold_root_cause_file": "main.py",
+  "gold_root_cause": "delete_order raises HTTP 400 instead of 404 when the order does not exist",
+  "injection_in_logs": false
+}

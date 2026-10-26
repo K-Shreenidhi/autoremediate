@@ -1,0 +1,5 @@
+{"ts": 1793000722.031, "level": "INFO", "msg": "order_created", "order_id": 1, "sku": "sku-1", "qty": 1, "stock_remaining": 4}
+{"ts": 1793000722.031, "level": "INFO", "msg": "request", "request_id": "19dc1219", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793000722.037, "level": "INFO", "msg": "request", "request_id": "68487827", "method": "DELETE", "path": "/orders/1", "status": 200}
+{"ts": 1793000722.045, "level": "INFO", "msg": "request", "request_id": "55f01e88", "method": "DELETE", "path": "/orders/99", "status": 400}
+{"ts": 1793000722.05, "level": "INFO", "msg": "request", "request_id": "29464aa5", "method": "DELETE", "path": "/orders/99", "status": 400}

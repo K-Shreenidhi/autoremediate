@@ -1,0 +1,12 @@
+diff --git a/main.py b/main.py
+index a48f3b5..7a273bd 100644
+--- a/main.py
++++ b/main.py
+@@ -131,5 +131,5 @@ def get_customer(cid: str):
+     c = CUSTOMERS.get(cid)
+     if c is None:
+         raise HTTPException(404, "customer not found")
+-    domain = c["email"].split("@")[1]
++    domain = c["email"].split("@")[1] if c["email"] else None
+     return {"name": c["name"], "email_domain": domain}
+\ No newline at end of file

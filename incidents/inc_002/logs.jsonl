@@ -1,0 +1,12 @@
+{"ts": 1793000716.696, "level": "INFO", "msg": "order_created", "order_id": 1, "sku": "sku-1", "qty": 1, "stock_remaining": 4}
+{"ts": 1793000716.696, "level": "INFO", "msg": "request", "request_id": "92b11250", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793000716.708, "level": "INFO", "msg": "order_created", "order_id": 2, "sku": "sku-1", "qty": 1, "stock_remaining": 3}
+{"ts": 1793000716.708, "level": "INFO", "msg": "request", "request_id": "ea00a581", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793000716.714, "level": "INFO", "msg": "order_created", "order_id": 3, "sku": "sku-1", "qty": 1, "stock_remaining": 2}
+{"ts": 1793000716.715, "level": "INFO", "msg": "request", "request_id": "88f8769b", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793000716.721, "level": "INFO", "msg": "list_orders", "page": 1, "page_size": 2, "returned": 1, "total_orders": 3}
+{"ts": 1793000716.721, "level": "INFO", "msg": "request", "request_id": "e132fe7c", "method": "GET", "path": "/orders", "status": 200}
+{"ts": 1793000716.726, "level": "INFO", "msg": "list_orders", "page": 2, "page_size": 2, "returned": 0, "total_orders": 3}
+{"ts": 1793000716.726, "level": "INFO", "msg": "request", "request_id": "b419ac1d", "method": "GET", "path": "/orders", "status": 200}
+{"ts": 1793000716.731, "level": "INFO", "msg": "list_orders", "page": 2, "page_size": 2, "returned": 0, "total_orders": 3}
+{"ts": 1793000716.732, "level": "INFO", "msg": "request", "request_id": "0a30cb52", "method": "GET", "path": "/orders", "status": 200}

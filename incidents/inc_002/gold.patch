@@ -1,0 +1,13 @@
+diff --git a/main.py b/main.py
+index 2ade035..7a273bd 100644
+--- a/main.py
++++ b/main.py
+@@ -108,7 +108,7 @@ def create_order(o: Order):
+ 
+ @app.get("/orders")
+ def list_orders(page: int = 1, page_size: int = 2):
+-    start = page * page_size
++    start = (page - 1) * page_size
+     items = ORDERS[start : start + page_size]
+     log.info(
+         "list_orders",
