@@ -1,2 +1,1 @@
-# Phase 0 needs only the Python standard library.
-# Later phases append their dependencies here.
+mcp==1.30.0
