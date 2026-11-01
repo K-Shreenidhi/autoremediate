@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: autoremediate-postgres
+    environment:
+      POSTGRES_USER: autoremediate
+      POSTGRES_PASSWORD: autoremediate_dev_pw
+      POSTGRES_DB: autoremediate
+    ports:
+      - "5433:5432"
+    volumes:
+      - autoremediate_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U autoremediate -d autoremediate" ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  autoremediate_pgdata:

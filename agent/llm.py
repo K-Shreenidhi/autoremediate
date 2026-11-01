@@ -44,6 +44,18 @@ PRICING = {
 
 
 @dataclass
+class Usage:
+    """Token usage tracking."""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    calls: int = 1
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+
+@dataclass
 class LLMMetrics:
     """Accumulated metrics for all LLM calls in one agent run."""
     calls: int = 0
@@ -180,3 +192,22 @@ class GeminiClient:
             self.metrics.completion_tokens += response.usage_metadata.candidates_token_count or 0
 
         return response.text or ""
+
+
+class LLMClient:
+    """Standard LLM client adapter for agent.graph and agent.run."""
+    def __init__(self, api_key: str = "", model: str = "", base_url: str = None):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+        self._gemini = GeminiClient(model=model or DEFAULT_MODEL, api_key=api_key)
+
+    def complete_json(self, system: str, prompt: str, model_cls: type, meta: dict = None):
+        res = self._gemini.generate(prompt, model_cls, system_instruction=system)
+        usage = Usage(
+            prompt_tokens=self._gemini.metrics.prompt_tokens,
+            completion_tokens=self._gemini.metrics.completion_tokens,
+            calls=1,
+        )
+        raw_text = res.model_dump_json() if hasattr(res, "model_dump_json") else json.dumps(res.model_dump())
+        return res, usage, raw_text

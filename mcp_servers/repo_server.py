@@ -3,6 +3,7 @@
 Phase 1 runs tests directly on the host with a timeout. Phase 5 replaces that
 with a no-network Docker sandbox.
 """
+import ast
 import os
 import re
 import subprocess
@@ -197,6 +198,71 @@ def run_tests(incident_id: str, timeout_seconds: int = 60) -> dict:
         "output_tail": "\n".join(text.splitlines()[-40:]),
     }
 
+
+@mcp.tool()
+@safe
+def replace_in_file(incident_id: str, path: str, old_text: str = "", new_text: str = "", old: str = "", new: str = "") -> dict:
+    """Replace an exact string in a file with new text. Protects tests and validates Python syntax."""
+    old_target = old if old else old_text
+    new_target = new if new else new_text
+    ws = _ws(incident_id)
+    n = path.replace("\\", "/")
+    if n.startswith("/") or ".." in n.split("/") or PROTECTED.search(n):
+        return {"ok": False, "error": f"protected or invalid path: {path}"}
+    target = _safe_path(ws, path)
+    if not target.is_file():
+        return {"ok": False, "error": f"not a file: {path}"}
+    content = target.read_text(encoding="utf-8")
+    count = content.count(old_target)
+    if count == 0:
+        return {"ok": False, "error": f"old text not found in {path}"}
+    if count > 1:
+        return {"ok": False, "error": f"old text matches several places ({count} places) in {path}"}
+    new_content = content.replace(old_target, new_target, 1)
+    if path.endswith(".py"):
+        try:
+            ast.parse(new_content)
+        except SyntaxError as e:
+            return {"ok": False, "error": f"syntax error: {e}"}
+    target.write_text(new_content, encoding="utf-8")
+    return {"ok": True, "path": path}
+
+@mcp.tool()
+@safe
+def diff_fingerprint(incident_id: str) -> dict:
+    """SHA-256 fingerprint of the workspace's uncommitted diff (binds a human approval to an exact patch)."""
+    import hashlib
+
+    ws = _ws(incident_id)
+    return {"ok": True, "sha256": hashlib.sha256(_git(ws, "diff").stdout).hexdigest()}
+
+
+@mcp.tool()
+@safe
+def publish_branch(incident_id: str, diff_sha256: str, branch: str, message: str) -> dict:
+    """Commit the workspace diff on a new branch and push it to the origin repo. Refuses if the diff changed since approval."""
+    import hashlib
+
+    ws = _ws(incident_id)
+    if not re.fullmatch(r"autoremediate/[A-Za-z0-9._-]+", branch) or ".." in branch:
+        raise ValueError("branch must look like autoremediate/<name>")
+    raw = _git(ws, "diff").stdout
+    if not raw.strip():
+        raise ValueError("nothing to publish: the workspace has no changes")
+    if hashlib.sha256(raw).hexdigest() != diff_sha256:
+        raise ValueError("the workspace diff changed after approval; refusing to publish")
+    steps = [
+        ("checkout", ["checkout", "-q", "-B", branch]),
+        ("add", ["add", "-u"]),
+        ("commit", ["-c", "commit.gpgsign=false", "commit", "-q", "-m", message]),
+        ("push", ["push", "-q", "--force", "origin", branch]),
+    ]
+    for name, args in steps:
+        p = _git(ws, *args)
+        if p.returncode != 0:
+            raise ValueError(f"git {name} failed: " + _text(p.stderr).strip())
+    commit = _text(_git(ws, "rev-parse", "--short", "HEAD").stdout).strip()
+    return {"ok": True, "branch": branch, "commit": commit}
 
 if __name__ == "__main__":
     mcp.run()
