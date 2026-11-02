@@ -1,12 +1,15 @@
-"""MCP server: git workspace + test runner for an incident (read, patch, verify).
+"""MCP server: git workspace + test runner for an incident (read, patch, verify, publish).
 
-Phase 1 runs tests directly on the host with a timeout. Phase 5 replaces that
-with a no-network Docker sandbox.
+Tests run inside a locked-down Docker container by default (no network, read-only
+workspace, non-root, memory/CPU/process limits). Set AUTOREMEDIATE_SANDBOX=host to run
+them on the host instead (development only, NOT safe).
 """
 import ast
+import hashlib
 import os
 import re
 import subprocess
+import uuid
 
 from mcp.server.fastmcp import FastMCP
 
@@ -20,6 +23,9 @@ UNTRUSTED = {
 }
 MAX_READ_BYTES = 200_000
 PROTECTED = re.compile(r"(^|/)(test_[^/]*\.py|[^/]*_test\.py|conftest\.py|pytest\.ini|tests?/.*|\.git[^/]*)(/|$)")
+SANDBOX_IMAGE = os.getenv("AUTOREMEDIATE_SANDBOX_IMAGE", "autoremediate-sandbox").strip() or "autoremediate-sandbox"
+DOCKER_DOWN_MARKERS = ("cannot connect to the docker daemon", "error during connect", "docker_engine",
+                       "is the docker daemon running")
 
 
 def _ws(incident_id: str):
@@ -32,8 +38,11 @@ def _ws(incident_id: str):
 
 def _git(ws, *args, data=None):
     return subprocess.run(
-        ["git", *args], cwd=ws, capture_output=True,
-        input=data, **({} if data is not None else {"stdin": subprocess.DEVNULL}),
+        ["git", *args],
+        cwd=ws,
+        capture_output=True,
+        input=data,
+        stdin=subprocess.DEVNULL if data is None else None,
     )
 
 
@@ -61,6 +70,40 @@ def _tracked_files(ws) -> list:
     return [ln for ln in out.splitlines() if ln.strip()]
 
 
+def _docker_base(ws, name: str) -> list:
+    """docker run arguments up to and including the image name (the sandbox rules)."""
+    return [
+        "docker", "run", "--rm", "--name", name,
+        "--network", "none",
+        "--memory", "512m", "--memory-swap", "512m", "--cpus", "1", "--pids-limit", "128",
+        "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+        "--read-only", "--tmpfs", "/tmp:rw,size=64m",
+        "--user", "65534:65534",
+        "--mount", f"type=bind,source={ws.resolve()},target=/work,readonly",
+        "-e", "LOG_FILE=/dev/null", "-e", "PYTHONDONTWRITEBYTECODE=1",
+        "-w", "/work",
+        SANDBOX_IMAGE,
+    ]
+
+
+def _run_tests_docker(ws, limit: int):
+    name = f"autoremediate-{uuid.uuid4().hex[:10]}"
+    cmd = _docker_base(ws, name) + ["python", "-m", "pytest", "-q", "-rf", "-p", "no:cacheprovider"]
+    try:
+        return subprocess.run(cmd, capture_output=True, timeout=limit, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        subprocess.run(["docker", "rm", "-f", name], capture_output=True, stdin=subprocess.DEVNULL)
+        raise
+
+
+def _run_tests_host(ws, limit: int):
+    env = {**os.environ, "LOG_FILE": os.devnull, "PYTHONDONTWRITEBYTECODE": "1"}
+    return subprocess.run(
+        [str(VICTIM_PY), "-m", "pytest", "-q", "-rf", "-p", "no:cacheprovider"],
+        cwd=ws, env=env, capture_output=True, timeout=limit, stdin=subprocess.DEVNULL,
+    )
+
+
 @mcp.tool()
 @safe
 def checkout_incident(incident_id: str) -> dict:
@@ -73,7 +116,8 @@ def checkout_incident(incident_id: str) -> dict:
     p = subprocess.run(
         ["git", "clone", "-q", "-c", "core.autocrlf=false", "--branch", meta["bug_branch"],
          "--single-branch", str(VICTIM), str(ws)],
-        capture_output=True, stdin=subprocess.DEVNULL,
+        capture_output=True,
+        stdin=subprocess.DEVNULL,
     )
     if p.returncode != 0:
         raise ValueError("git clone failed: " + _text(p.stderr).strip())
@@ -173,25 +217,29 @@ def get_diff(incident_id: str) -> dict:
 
 @mcp.tool()
 @safe
-def run_tests(incident_id: str, timeout_seconds: int = 60) -> dict:
-    """Run the full test suite in the workspace."""
+def run_tests(incident_id: str, timeout_seconds: int = 120) -> dict:
+    """Run the full test suite in the workspace (inside the Docker sandbox by default)."""
     ws = _ws(incident_id)
     limit = max(5, min(int(timeout_seconds), 300))
-    env = {**os.environ, "LOG_FILE": os.devnull, "PYTHONDONTWRITEBYTECODE": "1"}
+    mode = os.getenv("AUTOREMEDIATE_SANDBOX", "docker").strip().lower()
     try:
-        p = subprocess.run(
-            [str(VICTIM_PY), "-m", "pytest", "-q", "-rf", "-p", "no:cacheprovider"],
-            cwd=ws, env=env, capture_output=True, timeout=limit,
-            stdin=subprocess.DEVNULL,
-        )
+        p = _run_tests_docker(ws, limit) if mode == "docker" else _run_tests_host(ws, limit)
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": f"tests timed out after {limit}s"}
+    except FileNotFoundError:
+        return {"ok": False, "error": "docker was not found; install Docker Desktop and start it "
+                                      "(or set AUTOREMEDIATE_SANDBOX=host for unsafe development use)"}
+    err = _text(p.stderr)
+    if mode == "docker" and (p.returncode in (125, 126, 127) or any(m in err.lower() for m in DOCKER_DOWN_MARKERS)):
+        return {"ok": False, "error": "the sandbox could not run: " + (err.strip()[-300:] or "unknown error")
+                                      + " | build the image with: docker build -t autoremediate-sandbox infra/sandbox"}
     text = _text(p.stdout)
     lines = [ln for ln in text.splitlines() if ln.strip()]
     failed = [ln.split()[1] for ln in lines if ln.startswith("FAILED ")]
     return {
         "ok": True,
         **UNTRUSTED,
+        "sandbox": mode,
         "tests_passed": p.returncode == 0,
         "failed_tests": failed,
         "summary": lines[-1] if lines else "",
@@ -201,38 +249,45 @@ def run_tests(incident_id: str, timeout_seconds: int = 60) -> dict:
 
 @mcp.tool()
 @safe
-def replace_in_file(incident_id: str, path: str, old_text: str = "", new_text: str = "", old: str = "", new: str = "") -> dict:
-    """Replace an exact string in a file with new text. Protects tests and validates Python syntax."""
+def replace_in_file(incident_id: str, path: str, old: str = "", new: str = "", old_text: str = "", new_text: str = "") -> dict:
+    """Replace exactly one occurrence of `old` with `new` in a file. Test and config files are protected."""
     old_target = old if old else old_text
     new_target = new if new else new_text
     ws = _ws(incident_id)
-    n = path.replace("\\", "/")
-    if n.startswith("/") or ".." in n.split("/") or PROTECTED.search(n):
-        return {"ok": False, "error": f"protected or invalid path: {path}"}
+    norm = path.replace("\\", "/")
+    if norm.startswith("/") or ".." in norm.split("/") or PROTECTED.search(norm):
+        raise ValueError(f"path is protected or invalid: {path}")
     target = _safe_path(ws, path)
     if not target.is_file():
-        return {"ok": False, "error": f"not a file: {path}"}
-    content = target.read_text(encoding="utf-8")
-    count = content.count(old_target)
+        raise ValueError(f"not a file: {path}")
+    if not old_target:
+        raise ValueError("old text must not be empty")
+    raw = target.read_bytes().decode("utf-8")
+    crlf = "\r\n" in raw
+    text = raw.replace("\r\n", "\n")
+    old_n = old_target.replace("\r\n", "\n")
+    new_n = new_target.replace("\r\n", "\n")
+    count = text.count(old_n)
     if count == 0:
-        return {"ok": False, "error": f"old text not found in {path}"}
+        raise ValueError("old text not found in file (it must match exactly, including indentation)")
     if count > 1:
-        return {"ok": False, "error": f"old text matches several places ({count} places) in {path}"}
-    new_content = content.replace(old_target, new_target, 1)
+        raise ValueError(f"old text matches {count} places; include more surrounding lines to make it unique")
+    text = text.replace(old_n, new_n)
     if path.endswith(".py"):
         try:
-            ast.parse(new_content)
+            ast.parse(text)
         except SyntaxError as e:
-            return {"ok": False, "error": f"syntax error: {e}"}
-    target.write_text(new_content, encoding="utf-8")
+            raise ValueError(f"edit rejected: result has a syntax error: {e.msg} (line {e.lineno})")
+    if crlf:
+        text = text.replace("\n", "\r\n")
+    target.write_bytes(text.encode("utf-8"))
     return {"ok": True, "path": path}
+
 
 @mcp.tool()
 @safe
 def diff_fingerprint(incident_id: str) -> dict:
     """SHA-256 fingerprint of the workspace's uncommitted diff (binds a human approval to an exact patch)."""
-    import hashlib
-
     ws = _ws(incident_id)
     return {"ok": True, "sha256": hashlib.sha256(_git(ws, "diff").stdout).hexdigest()}
 
@@ -241,8 +296,6 @@ def diff_fingerprint(incident_id: str) -> dict:
 @safe
 def publish_branch(incident_id: str, diff_sha256: str, branch: str, message: str) -> dict:
     """Commit the workspace diff on a new branch and push it to the origin repo. Refuses if the diff changed since approval."""
-    import hashlib
-
     ws = _ws(incident_id)
     if not re.fullmatch(r"autoremediate/[A-Za-z0-9._-]+", branch) or ".." in branch:
         raise ValueError("branch must look like autoremediate/<name>")
@@ -263,6 +316,7 @@ def publish_branch(incident_id: str, diff_sha256: str, branch: str, message: str
             raise ValueError(f"git {name} failed: " + _text(p.stderr).strip())
     commit = _text(_git(ws, "rev-parse", "--short", "HEAD").stdout).strip()
     return {"ok": True, "branch": branch, "commit": commit}
+
 
 if __name__ == "__main__":
     mcp.run()

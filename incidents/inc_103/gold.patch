@@ -1,0 +1,13 @@
+diff --git a/main.py b/main.py
+index ad57cc0..7a273bd 100644
+--- a/main.py
++++ b/main.py
+@@ -60,7 +60,7 @@ class Order(BaseModel):
+ def discount_pct(code):
+     if not code:
+         return 0.0
+-    pct = DISCOUNTS[code]
++    pct = DISCOUNTS.get(code)
+     if pct is None:
+         log.warning("unknown discount code", extra={"ctx": {"code": code}})
+         return 0.0

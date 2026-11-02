@@ -46,7 +46,7 @@ async def test_telemetry():
             print("tools: " + ", ".join(tools))
 
             res = await call(s, "list_incidents")
-            check("list_incidents returns 5 incidents", len(res.get("incidents", [])) == 5)
+            check("list_incidents returns at least 5 incidents", len(res.get("incidents", [])) >= 5)
             blob = json.dumps(res).lower()
             leaked = [k for k in ("gold", "category", "failing_test", "injection", "bug_branch") if k in blob]
             check("no ground-truth fields leaked to the agent", not leaked)

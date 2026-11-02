@@ -4,10 +4,14 @@ from __future__ import annotations
 import json
 import os
 import sys
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Direct imports from mcp_servers for fast in-process execution
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+# Direct imports from mcp_servers for fast in-process fallback & direct imports
 from mcp_servers.repo_server import (
     checkout_incident as _repo_checkout,
     list_files as _repo_list_files,
@@ -27,6 +31,25 @@ from mcp_servers.telemetry_server import (
     get_error_summary as _telem_get_error_summary,
     get_status_breakdown as _telem_get_status_breakdown,
 )
+
+ROOT = Path(__file__).resolve().parent.parent
+
+TELEMETRY_TOOLS = {
+    "list_incidents",
+    "get_ticket",
+    "search_logs",
+    "get_error_summary",
+    "get_status_breakdown",
+}
+
+
+def _server_params(module: str) -> StdioServerParameters:
+    return StdioServerParameters(
+        command=sys.executable,
+        args=["-m", module],
+        cwd=str(ROOT),
+        env={**os.environ},
+    )
 
 
 class MCPTools:
@@ -110,18 +133,54 @@ search_logs = MCPTools.search_logs
 get_error_summary = MCPTools.get_error_summary
 get_status_breakdown = MCPTools.get_status_breakdown
 
+
 class Tools:
-    """Async-compatible adapter for the in-process MCP tools."""
+    """Async-compatible adapter connecting to MCP servers via stdio_client."""
+
+    def __init__(self):
+        self._stack = AsyncExitStack()
+        self._telemetry_session: Optional[ClientSession] = None
+        self._repo_session: Optional[ClientSession] = None
 
     async def __aenter__(self):
+        await self._stack.__aenter__()
+        try:
+            r_tel, w_tel = await self._stack.enter_async_context(
+                stdio_client(_server_params("mcp_servers.telemetry_server"))
+            )
+            self._telemetry_session = await self._stack.enter_async_context(
+                ClientSession(r_tel, w_tel)
+            )
+            await self._telemetry_session.initialize()
+
+            r_repo, w_repo = await self._stack.enter_async_context(
+                stdio_client(_server_params("mcp_servers.repo_server"))
+            )
+            self._repo_session = await self._stack.enter_async_context(
+                ClientSession(r_repo, w_repo)
+            )
+            await self._repo_session.initialize()
+        except Exception:
+            # Fall back to in-process MCPTools if stdio_client fails
+            pass
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        return False
+        return await self._stack.__aexit__(exc_type, exc_val, exc_tb)
 
     async def call(self, name: str, **args) -> Dict[str, Any]:
-        tool = getattr(MCPTools, name, None)
+        session = self._telemetry_session if name in TELEMETRY_TOOLS else self._repo_session
+        if session is not None:
+            res = await session.call_tool(name, args)
+            text = "".join(c.text for c in res.content if getattr(c, "type", "") == "text")
+            if res.isError:
+                return {"ok": False, "error": "TOOL ERROR: " + text}
+            try:
+                return json.loads(text)
+            except Exception:
+                return {"ok": True, "text": text}
 
+        tool = getattr(MCPTools, name, None)
         if tool is None or not callable(tool):
             raise ValueError(f"Unknown MCP tool: {name}")
 

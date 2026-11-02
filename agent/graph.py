@@ -4,7 +4,7 @@
               ^                 |        |-> reject
               |                 |        '-> apply_human_edit -> verify
               '-- next_attempt <-+ (failed, attempts left)
-                                '-> give_up (failed, no attempts left, or infrastructure problem)
+                                '-> give_up (failed, out of attempts, budget exceeded, or infrastructure problem)
 """
 import json
 import os
@@ -16,12 +16,16 @@ from langgraph.types import interrupt
 from typing_extensions import TypedDict
 
 from agent.baseline import SKIP_FILES, SYSTEM_PROMPT, _strip_numbers, build_prompt
+from agent.policy import check_edits
 from agent.schemas import AgentOutput, Edit
 from rag.context import rag_context
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = ROOT / "outputs"
 MAX_ATTEMPTS = 3
+MAX_LLM_CALLS = int(os.getenv("AUTOREMEDIATE_MAX_LLM_CALLS", "8"))
+MAX_SECONDS = float(os.getenv("AUTOREMEDIATE_MAX_SECONDS", "600"))
+MAX_PROMPT_CHARS = int(os.getenv("AUTOREMEDIATE_MAX_PROMPT_CHARS", "60000"))
 BACKOFF_SECONDS = tuple(float(x) for x in os.getenv("AUTOREMEDIATE_BACKOFF", "5,15,45").split(",") if x.strip())
 TRANSIENT_MARKERS = ("429", "resource_exhausted", "rate limit", "rate_limit", "quota", "503", "unavailable",
                      "overloaded", "timed out", "timeout", "temporarily")
@@ -35,9 +39,20 @@ def is_transient(error: Exception) -> bool:
     return any(marker in text for marker in TRANSIENT_MARKERS)
 
 
+def budget_reason(state: dict, prompt: str) -> str:
+    if time.time() - state.get("started_at", time.time()) > MAX_SECONDS:
+        return f"time budget exceeded ({MAX_SECONDS:g}s)"
+    if state.get("llm_calls", 0) >= MAX_LLM_CALLS:
+        return f"LLM call budget exceeded ({MAX_LLM_CALLS} calls)"
+    if len(prompt) > MAX_PROMPT_CHARS:
+        return f"prompt budget exceeded ({len(prompt)} > {MAX_PROMPT_CHARS} characters)"
+    return ""
+
+
 class State(TypedDict, total=False):
     incident_id: str
     attempt: int
+    started_at: float
     prompt_base: str
     sources: dict
     feedback: str
@@ -110,32 +125,47 @@ def build_graph(tools, llm, checkpointer):
         errors = tools.call("get_error_summary", incident_id=inc)
         status = tools.call("get_status_breakdown", incident_id=inc)
         warnings = tools.call("search_logs", incident_id=inc, level="WARNING", limit=5)
-        tools.call("checkout_incident", incident_id=inc)
-        ci = tools.call("run_tests", incident_id=inc)
-        files = tools.call("list_files", incident_id=inc)["files"]
-        sources = {}
-        for name in files:
-            base = name.split("/")[-1]
-            if name.endswith(".py") and not base.startswith("test_") and base not in SKIP_FILES:
-                r = tools.call("read_file", incident_id=inc, path=name)
-                if r.get("ok"):
-                    sources[name] = _strip_numbers(r["content"])
-        return {
-            "prompt_base": rag_context(ticket, errors) + build_prompt(ticket, errors, status, warnings, ci, sources),
-            "sources": sources,
+        co = tools.call("checkout_incident", incident_id=inc)
+        ci = tools.call("run_tests", incident_id=inc) if co.get("ok") else {"ok": False, "error": co.get("error")}
+        base = {
             "attempt": 0,
+            "started_at": time.time(),
             "feedback": "",
             "human_edit": False,
             "tokens": 0,
             "llm_calls": 0,
             "history": [],
             "status": "running",
+            "sources": {},
+            "prompt_base": "",
         }
+        if not ci.get("ok"):
+            base["verification"] = {"ok": False, "stage": "sandbox", "infra": True, "failed_tests": [], "output_tail": "",
+                                    "summary": f"could not run the tests: {ci.get('error')}"}
+            return base
+        files = tools.call("list_files", incident_id=inc)["files"]
+        sources = {}
+        for name in files:
+            fname = name.split("/")[-1]
+            if name.endswith(".py") and not fname.startswith("test_") and fname not in SKIP_FILES:
+                r = tools.call("read_file", incident_id=inc, path=name)
+                if r.get("ok"):
+                    sources[name] = _strip_numbers(r["content"])
+        base["sources"] = sources
+        base["prompt_base"] = rag_context(ticket, errors) + build_prompt(ticket, errors, status, warnings, ci, sources)
+        return base
+
+    def after_ingest(state: State) -> str:
+        return "give_up" if state.get("verification", {}).get("infra") else "diagnose"
 
     def diagnose(state: State):
         prompt = state["prompt_base"]
         if state.get("feedback"):
             prompt += "\n\n## Previous attempt failed\n" + state["feedback"] + "\nFix the problem and return a corrected JSON object."
+        reason = budget_reason(state, prompt)
+        if reason:
+            return {"attempt": state["attempt"], "human_edit": False,
+                    "proposal": {"error": reason, "edits": [], "budget": True}}
         meta = {"incident_id": state["incident_id"], "sources": state["sources"], "attempt": state["attempt"]}
         out = usage = error = None
         for wait in (0.0,) + BACKOFF_SECONDS:
@@ -172,12 +202,16 @@ def build_graph(tools, llm, checkpointer):
         inc = state["incident_id"]
         prop = state["proposal"]
         edits = prop.get("edits") or []
-        v = {"ok": False, "stage": "", "summary": "", "failed_tests": [], "output_tail": "", "infra": False}
+        violations = [] if (state.get("human_edit") or not edits) else check_edits(edits)
+        v = {"ok": False, "stage": "", "summary": "", "failed_tests": [], "output_tail": "", "infra": False, "budget": False}
         co = tools.call("checkout_incident", incident_id=inc)  # fresh workspace for every attempt
         if not co.get("ok"):
             v.update(stage="workspace", infra=True, summary=f"could not prepare the workspace: {co.get('error')}")
         elif not edits:
-            v.update(stage="llm", infra=bool(prop.get("infra")), summary=prop.get("error", "the model proposed no edits"))
+            v.update(stage="budget" if prop.get("budget") else "llm", infra=bool(prop.get("infra")),
+                     budget=bool(prop.get("budget")), summary=prop.get("error", "the model proposed no edits"))
+        elif violations:
+            v.update(stage="policy", summary="edits rejected by the safety policy: " + "; ".join(violations))
         else:
             for e in edits:
                 r = tools.call("replace_in_file", incident_id=inc, path=e["path"], old=e["old"], new=e["new"])
@@ -186,7 +220,9 @@ def build_graph(tools, llm, checkpointer):
                     break
             else:
                 t = tools.call("run_tests", incident_id=inc)
-                if t.get("tests_passed"):
+                if not t.get("ok"):
+                    v.update(stage="sandbox", infra=True, summary=f"could not run the tests: {t.get('error')}")
+                elif t.get("tests_passed"):
                     v.update(ok=True, stage="tests", summary=t.get("summary", ""))
                 else:
                     v.update(stage="tests", summary=t.get("summary", "tests failed"),
@@ -209,7 +245,7 @@ def build_graph(tools, llm, checkpointer):
         v = state["verification"]
         if v["ok"]:
             return "approval"
-        if v.get("infra") or state.get("human_edit"):
+        if v.get("infra") or v.get("budget") or state.get("human_edit"):
             return "give_up"
         if state["attempt"] + 1 < MAX_ATTEMPTS:
             return "next_attempt"
@@ -274,6 +310,8 @@ def build_graph(tools, llm, checkpointer):
         if last.get("infra"):
             return {"status": "infra_error",
                     "result": {"error": f"stopped by an infrastructure problem, not a bad patch: {last['summary']}"}}
+        if last.get("budget"):
+            return {"status": "budget_exceeded", "result": {"error": last["summary"]}}
         return {"status": "failed",
                 "result": {"error": f"no verified patch after {state['attempt'] + 1} attempt(s): {last['summary']}"}}
 
@@ -283,7 +321,7 @@ def build_graph(tools, llm, checkpointer):
                      ("reject", reject), ("give_up", give_up)]:
         g.add_node(name, fn)
     g.add_edge(START, "ingest")
-    g.add_edge("ingest", "diagnose")
+    g.add_conditional_edges("ingest", after_ingest, {"diagnose": "diagnose", "give_up": "give_up"})
     g.add_edge("diagnose", "verify")
     g.add_conditional_edges("verify", after_verify, {"approval": "approval", "next_attempt": "next_attempt", "give_up": "give_up"})
     g.add_edge("next_attempt", "diagnose")

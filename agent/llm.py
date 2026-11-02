@@ -13,6 +13,7 @@ import time
 from dataclasses import dataclass, field
 from typing import TypeVar
 
+from openai import OpenAI
 from pydantic import BaseModel
 
 try:
@@ -200,17 +201,49 @@ class GeminiClient:
 class LLMClient:
     """Standard LLM client adapter for agent.graph and agent.run."""
     def __init__(self, api_key: str = "", model: str = "", base_url: str = None):
-        self.api_key = api_key
-        self.model = model
-        self.base_url = base_url
-        self._gemini = GeminiClient(model=model or DEFAULT_MODEL, api_key=api_key)
+        self.api_key = api_key or os.getenv("LLM_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
+        self.model = model or os.getenv("LLM_MODEL", "") or DEFAULT_MODEL
+        self.base_url = base_url or os.getenv("LLM_BASE_URL", None)
+        self._gemini = None
+        self._openai = None
+        try:
+            self._gemini = GeminiClient(model=self.model, api_key=self.api_key)
+        except Exception:
+            pass
+        try:
+            self._openai = OpenAI(api_key=self.api_key or "none", base_url=self.base_url)
+        except Exception:
+            pass
 
     def complete_json(self, system: str, prompt: str, model_cls: type, meta: dict = None):
-        res = self._gemini.generate(prompt, model_cls, system_instruction=system)
-        usage = Usage(
-            prompt_tokens=self._gemini.metrics.prompt_tokens,
-            completion_tokens=self._gemini.metrics.completion_tokens,
-            calls=1,
-        )
-        raw_text = res.model_dump_json() if hasattr(res, "model_dump_json") else json.dumps(res.model_dump())
-        return res, usage, raw_text
+        if self._openai is not None and (self.base_url or (not self.api_key.startswith("AQ.") and not self.api_key.startswith("AIza") and "gemini" not in self.model)):
+            try:
+                response = self._openai.beta.chat.completions.parse(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt},
+                    ],
+                    response_format=model_cls,
+                )
+                res = response.choices[0].message.parsed
+                usage = Usage(
+                    prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+                    completion_tokens=response.usage.completion_tokens if response.usage else 0,
+                    calls=1,
+                )
+                raw_text = response.choices[0].message.content or ""
+                return res, usage, raw_text
+            except Exception as e:
+                if self._gemini is None:
+                    raise
+        if self._gemini is not None:
+            res = self._gemini.generate(prompt, model_cls, system_instruction=system)
+            usage = Usage(
+                prompt_tokens=self._gemini.metrics.prompt_tokens,
+                completion_tokens=self._gemini.metrics.completion_tokens,
+                calls=1,
+            )
+            raw_text = res.model_dump_json() if hasattr(res, "model_dump_json") else json.dumps(res.model_dump())
+            return res, usage, raw_text
+        raise RuntimeError("No working LLM backend (neither Gemini nor OpenAI could be initialized)")
