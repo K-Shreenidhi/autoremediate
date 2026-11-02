@@ -6,7 +6,7 @@ resolved when it was verified (full test suite green) before approval.
 Usage (from the project root):
   python -m evals.run_graph_eval --fake flaky     # no API key; first attempt always fails
   python -m evals.run_graph_eval                  # real LLM from .env
-  python -m evals.run_graph_eval --sleep 2
+  python -m evals.run_graph_eval --sleep 15       # pause between incidents (rate limits)
 """
 import argparse
 import json
@@ -23,7 +23,8 @@ from evals.run_eval import INCIDENTS_DIR, RESULTS_DIR, ROOT, print_table, score,
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fake", nargs="?", const="oracle", choices=["oracle", "flaky", "bad"], default=None)
+    ap.add_argument("--fake", nargs="?", const="oracle",
+                    choices=["oracle", "flaky", "bad", "ratelimit_once", "ratelimit"], default=None)
     ap.add_argument("--incidents", default="")
     ap.add_argument("--sleep", type=float, default=0.0)
     args = ap.parse_args()
@@ -70,6 +71,7 @@ def main() -> None:
             row = score(res, meta)
             row["attempts"] = len(v.get("history", []))
             row["failure"] = "" if ok else v.get("verification", {}).get("summary", "no verified patch")
+            row["infra_error"] = v.get("status") == "infra_error"
             rows.append(row)
             attempts.append(row["attempts"])
             print(f"[{n + 1}/{len(ids)}] {inc} resolved={yn(row['resolved'])} attempts={row['attempts']} ({row['seconds']}s)", flush=True)
@@ -81,6 +83,11 @@ def main() -> None:
         if r["failure"]:
             print(f"  {r['incident_id']}: not resolved after {r['attempts']} attempt(s): {r['failure']}")
     print(f"avg attempts per incident: {sum(attempts) / max(len(attempts), 1):.1f}")
+    infra = [r["incident_id"] for r in rows if r["infra_error"]]
+    if infra:
+        print(f"\nWARNING: {', '.join(infra)} stopped on an infrastructure problem (rate limit, quota or workspace error), not a bad patch.")
+        print("The numbers above are NOT valid for those incidents. Re-run them after a pause, for example:")
+        print(f"  python -m evals.run_graph_eval --incidents {','.join(infra)} --sleep 15")
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"{tag}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.json"
     with open(out, "w", encoding="utf-8", newline="\n") as f:

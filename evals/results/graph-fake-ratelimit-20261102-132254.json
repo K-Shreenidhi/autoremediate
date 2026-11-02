@@ -1,0 +1,21 @@
+{
+  "model": "fake-ratelimit",
+  "rows": [
+    {
+      "incident_id": "inc_001",
+      "category": "keyerror",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 4.1,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 0,
+      "diff": "",
+      "attempts": 1,
+      "failure": "RuntimeError: Gemini API error: 429 RESOURCE_EXHAUSTED (fake rate limit)",
+      "infra_error": true
+    }
+  ]
+}

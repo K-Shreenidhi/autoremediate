@@ -6,6 +6,7 @@ import re
 import shutil
 import stat
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -31,17 +32,34 @@ def load_incident(incident_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def rmtree_force(path: Path) -> None:
-    """Delete a directory tree, including read-only files (git objects on Windows)."""
+def rmtree_force(path: Path, attempts: int = 6) -> None:
+    """Delete a directory tree, including read-only files.
+
+    Retries because Windows can briefly lock files (antivirus, the search indexer,
+    a git process that just exited).
+    """
 
     def handler(func, p, _exc):
         os.chmod(p, stat.S_IWRITE)
         func(p)
 
-    if sys.version_info >= (3, 12):
-        shutil.rmtree(path, onexc=handler)
-    else:
-        shutil.rmtree(path, onerror=handler)
+    last = None
+    for n in range(attempts):
+        if not path.exists():
+            return
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(path, onexc=handler)
+            else:
+                shutil.rmtree(path, onerror=handler)
+            return
+        except OSError as e:
+            last = e
+            time.sleep(0.4 * (n + 1))
+    raise ValueError(
+        f"could not delete {path}: a file is locked by another program ({last}). "
+        "Close editors or Explorer windows on that folder, or exclude the project folder from antivirus scanning."
+    )
 
 
 def safe(fn):

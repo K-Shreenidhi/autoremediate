@@ -4,9 +4,11 @@
               ^                 |        |-> reject
               |                 |        '-> apply_human_edit -> verify
               '-- next_attempt <-+ (failed, attempts left)
-                                '-> give_up (failed, no attempts left)
+                                '-> give_up (failed, no attempts left, or infrastructure problem)
 """
 import json
+import os
+import time
 from pathlib import Path
 
 from langgraph.graph import END, START, StateGraph
@@ -15,10 +17,22 @@ from typing_extensions import TypedDict
 
 from agent.baseline import SKIP_FILES, SYSTEM_PROMPT, _strip_numbers, build_prompt
 from agent.schemas import AgentOutput, Edit
+from rag.context import rag_context
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = ROOT / "outputs"
 MAX_ATTEMPTS = 3
+BACKOFF_SECONDS = tuple(float(x) for x in os.getenv("AUTOREMEDIATE_BACKOFF", "5,15,45").split(",") if x.strip())
+TRANSIENT_MARKERS = ("429", "resource_exhausted", "rate limit", "rate_limit", "quota", "503", "unavailable",
+                     "overloaded", "timed out", "timeout", "temporarily")
+
+
+def is_transient(error: Exception) -> bool:
+    """True for provider problems (rate limit, quota, outage), not for bad model output."""
+    if type(error).__name__ == "LLMError":
+        return False
+    text = f"{type(error).__name__}: {error}".lower()
+    return any(marker in text for marker in TRANSIENT_MARKERS)
 
 
 class State(TypedDict, total=False):
@@ -107,7 +121,7 @@ def build_graph(tools, llm, checkpointer):
                 if r.get("ok"):
                     sources[name] = _strip_numbers(r["content"])
         return {
-            "prompt_base": build_prompt(ticket, errors, status, warnings, ci, sources),
+            "prompt_base": rag_context(ticket, errors) + build_prompt(ticket, errors, status, warnings, ci, sources),
             "sources": sources,
             "attempt": 0,
             "feedback": "",
@@ -123,13 +137,24 @@ def build_graph(tools, llm, checkpointer):
         if state.get("feedback"):
             prompt += "\n\n## Previous attempt failed\n" + state["feedback"] + "\nFix the problem and return a corrected JSON object."
         meta = {"incident_id": state["incident_id"], "sources": state["sources"], "attempt": state["attempt"]}
-        try:
-            out, usage, _raw = llm.complete_json(SYSTEM_PROMPT, prompt, AgentOutput, meta)
-        except Exception as e:
+        out = usage = error = None
+        for wait in (0.0,) + BACKOFF_SECONDS:
+            if wait:
+                print(f"[diagnose] provider limit or outage; waiting {wait:g}s, then retrying", flush=True)
+                time.sleep(wait)
+            try:
+                out, usage, _raw = llm.complete_json(SYSTEM_PROMPT, prompt, AgentOutput, meta)
+                error = None
+                break
+            except Exception as e:
+                error = e
+                if not is_transient(e):
+                    break
+        if error is not None:
             return {
                 "attempt": state["attempt"],
                 "human_edit": False,
-                "proposal": {"error": f"{type(e).__name__}: {str(e)[:300]}", "edits": []},
+                "proposal": {"error": f"{type(error).__name__}: {str(error)[:300]}", "edits": [], "infra": is_transient(error)},
             }
         return {
             "attempt": state["attempt"],
@@ -147,10 +172,12 @@ def build_graph(tools, llm, checkpointer):
         inc = state["incident_id"]
         prop = state["proposal"]
         edits = prop.get("edits") or []
-        v = {"ok": False, "stage": "", "summary": "", "failed_tests": [], "output_tail": ""}
-        tools.call("checkout_incident", incident_id=inc)  # fresh workspace for every attempt
-        if not edits:
-            v.update(stage="llm", summary=prop.get("error", "the model proposed no edits"))
+        v = {"ok": False, "stage": "", "summary": "", "failed_tests": [], "output_tail": "", "infra": False}
+        co = tools.call("checkout_incident", incident_id=inc)  # fresh workspace for every attempt
+        if not co.get("ok"):
+            v.update(stage="workspace", infra=True, summary=f"could not prepare the workspace: {co.get('error')}")
+        elif not edits:
+            v.update(stage="llm", infra=bool(prop.get("infra")), summary=prop.get("error", "the model proposed no edits"))
         else:
             for e in edits:
                 r = tools.call("replace_in_file", incident_id=inc, path=e["path"], old=e["old"], new=e["new"])
@@ -179,9 +206,10 @@ def build_graph(tools, llm, checkpointer):
         }
 
     def after_verify(state: State) -> str:
-        if state["verification"]["ok"]:
+        v = state["verification"]
+        if v["ok"]:
             return "approval"
-        if state.get("human_edit"):
+        if v.get("infra") or state.get("human_edit"):
             return "give_up"
         if state["attempt"] + 1 < MAX_ATTEMPTS:
             return "next_attempt"
@@ -243,7 +271,11 @@ def build_graph(tools, llm, checkpointer):
 
     def give_up(state: State):
         last = state["verification"]
-        return {"status": "failed", "result": {"error": f"no verified patch after {state['attempt'] + 1} attempt(s): {last['summary']}"}}
+        if last.get("infra"):
+            return {"status": "infra_error",
+                    "result": {"error": f"stopped by an infrastructure problem, not a bad patch: {last['summary']}"}}
+        return {"status": "failed",
+                "result": {"error": f"no verified patch after {state['attempt'] + 1} attempt(s): {last['summary']}"}}
 
     g = StateGraph(State)
     for name, fn in [("ingest", ingest), ("diagnose", diagnose), ("verify", verify), ("next_attempt", next_attempt),

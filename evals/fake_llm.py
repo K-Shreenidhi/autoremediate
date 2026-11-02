@@ -1,8 +1,10 @@
 """Fake LLMs for testing without an API key.
 
-mode "oracle": always returns the gold fix.
-mode "flaky":  first attempt is a harmless no-op edit (tests still fail), then the gold fix.
-mode "bad":    always returns the no-op edit (never fixes anything).
+mode "oracle":         always returns the gold fix.
+mode "flaky":          first attempt is a harmless no-op edit (tests still fail), then the gold fix.
+mode "bad":            always returns the no-op edit (never fixes anything).
+mode "ratelimit_once": the first call fails with a fake 429 rate-limit error, then behaves like oracle.
+mode "ratelimit":      every call fails with a fake 429 rate-limit error.
 """
 import json
 
@@ -14,8 +16,12 @@ class FakeLLM:
     def __init__(self, mode: str = "oracle"):
         self.mode = mode
         self.model = f"fake-{mode}"
+        self.calls = 0
 
     def complete_json(self, system, user, model_cls, meta=None):
+        self.calls += 1
+        if self.mode == "ratelimit" or (self.mode == "ratelimit_once" and self.calls == 1):
+            raise RuntimeError("Gemini API error: 429 RESOURCE_EXHAUSTED (fake rate limit)")
         gold = parse_gold(meta["incident_id"])
         fn = gold_function(meta["sources"][gold["path"]], gold["removed_lines"][0])
         attempt = meta.get("attempt", 0)

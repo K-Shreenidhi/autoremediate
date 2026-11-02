@@ -1,0 +1,42 @@
+{
+    "inc_001": {
+        "docs": [
+            "runbook-checkout-500s.md"
+        ],
+        "code": [
+            "discount_pct"
+        ]
+    },
+    "inc_002": {
+        "docs": [
+            "runbook-order-history-pagination.md"
+        ],
+        "code": [
+            "list_orders"
+        ]
+    },
+    "inc_003": {
+        "docs": [
+            "runbook-customer-profile-crashes.md"
+        ],
+        "code": [
+            "get_customer"
+        ]
+    },
+    "inc_004": {
+        "docs": [
+            "runbook-order-cancellation-errors.md"
+        ],
+        "code": [
+            "delete_order"
+        ]
+    },
+    "inc_005": {
+        "docs": [
+            "runbook-inventory-mismatch.md"
+        ],
+        "code": [
+            "create_order"
+        ]
+    }
+}
