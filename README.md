@@ -282,6 +282,9 @@ Python 3.11+ · LangGraph 1.2 · PostgreSQL (checkpointer) · Model Context Prot
 
 ---
 
+DEMO :
+https://github.com/user-attachments/assets/57bbf0d4-83d3-4dd9-9127-12a04b1cac2d
+
 <div align="center">
 
   Built by <strong>Shreenidhi K</strong> ·
