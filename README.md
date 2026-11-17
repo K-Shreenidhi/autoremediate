@@ -276,6 +276,7 @@ SECURITY.md   what the agent cannot do, and its limits
 - [ ] Open a real GitHub pull request on approval
 - [ ] Incidents that need multi-file patches
 
+DEMO :
 https://github.com/user-attachments/assets/d8af41aa-d6a9-4d0c-a43e-c93c5b00602b
 
 
@@ -286,8 +287,7 @@ Python 3.11+ · LangGraph 1.2 · PostgreSQL (checkpointer) · Model Context Prot
 
 ---
 
-DEMO :
-https://github.com/user-attachments/assets/57bbf0d4-83d3-4dd9-9127-12a04b1cac2d
+
 
 <div align="center">
 
