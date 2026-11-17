@@ -276,6 +276,10 @@ SECURITY.md   what the agent cannot do, and its limits
 - [ ] Open a real GitHub pull request on approval
 - [ ] Incidents that need multi-file patches
 
+https://github.com/user-attachments/assets/d8af41aa-d6a9-4d0c-a43e-c93c5b00602b
+
+
+
 ## Tech stack
 
 Python 3.11+ · LangGraph 1.2 · PostgreSQL (checkpointer) · Model Context Protocol (`mcp` 1.30) · OpenAI-compatible API (`openai` SDK) · Pydantic · FastAPI (target services) · pytest · Docker · rank-bm25 · fastembed (BAAI/bge-small-en-v1.5, MiniLM cross-encoder)
