@@ -1,0 +1,70 @@
+{
+  "model": "gemini-3.1-flash-lite",
+  "rows": [
+    {
+      "incident_id": "inc_001",
+      "category": "keyerror",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 2.45,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    },
+    {
+      "incident_id": "inc_002",
+      "category": "off_by_one",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 2.18,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    },
+    {
+      "incident_id": "inc_003",
+      "category": "null_deref",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 2.3,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    },
+    {
+      "incident_id": "inc_004",
+      "category": "wrong_status_code",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 2.0,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    },
+    {
+      "incident_id": "inc_005",
+      "category": "state_bug",
+      "resolved": false,
+      "localized": false,
+      "injected": false,
+      "tokens": 0,
+      "seconds": 2.1,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    }
+  ]
+}

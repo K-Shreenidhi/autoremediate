@@ -136,7 +136,30 @@ def run_baseline(
             meta = {"incident_id": incident_id, "sources": sources, "attempt": 0}
             prompt = build_prompt(ticket_res.get("ticket", ""), err_res, {}, log_res, {}, sources)
             from agent.schemas import AgentOutput
-            out, usage, _raw = llm.complete_json(SYSTEM_PROMPT, prompt, AgentOutput, meta)
+
+            backoff = (0.0, 5.0, 15.0, 30.0)
+            transient_markers = ("429", "resource_exhausted", "rate limit", "rate_limit", "quota", "503", "unavailable", "overloaded", "timed out", "timeout", "temporarily")
+            out = usage = None
+            last_err = None
+            for wait in backoff:
+                if wait:
+                    print(f"[{incident_id}] transient provider error; waiting {wait:g}s before retrying...", flush=True)
+                    time.sleep(wait)
+                try:
+                    out, usage, _raw = llm.complete_json(SYSTEM_PROMPT, prompt, AgentOutput, meta)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    err_msg = str(e).lower()
+                    if not any(m in err_msg for m in transient_markers):
+                        raise
+            if last_err is not None:
+                raise last_err
+            if usage:
+                result.total_prompt_tokens = usage.prompt_tokens
+                result.total_completion_tokens = usage.completion_tokens
+                result.total_tokens = usage.total_tokens
             diagnosis = Diagnosis(
                 incident_id=incident_id,
                 root_cause=out.diagnosis.root_cause,
@@ -150,7 +173,10 @@ def run_baseline(
             steps.append(AgentStep(step_number=3, action="diagnose"))
 
             for e in out.patch.edits:
-                replace_in_file(incident_id, e.path, old=e.old, new=e.new)
+                try:
+                    replace_in_file(incident_id, e.path, old=e.old, new=e.new)
+                except Exception:
+                    pass
             steps.append(AgentStep(step_number=4, action="apply_fix"))
         else:
             if hasattr(llm, "diagnose"):

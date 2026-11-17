@@ -1,0 +1,13 @@
+diff --git a/orders.py b/orders.py
+index f948a50..020e0be 100644
+--- a/orders.py
++++ b/orders.py
+@@ -61,7 +61,7 @@ class OrderBook:
+         order = self.orders.get(order_id)
+         if order is None:
+             raise OrderError(f"order {order_id} not found")
+-        if order["status"] == "cancelled":
++        if order["status"] != "pending":
+             raise OrderError(f"order {order_id} is {order['status']} and cannot be cancelled")
+         for line in order["lines"]:
+             self.inventory.release(line["sku"], line["qty"])

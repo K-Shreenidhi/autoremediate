@@ -73,3 +73,11 @@ def safe(fn):
             return {"ok": False, "error": str(e)}
 
     return wrapper
+
+    
+def victim_path(meta: dict) -> Path:
+    """Folder of the victim repo an incident belongs to (default: the original victim)."""
+    name = meta.get("victim")
+    if os.getenv("VICTIM_REPO") or not name:
+        return VICTIM
+    return (ROOT.parent / name).resolve()

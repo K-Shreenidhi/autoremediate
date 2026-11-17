@@ -1,0 +1,8 @@
+{"ts": 1793787376.167, "level": "INFO", "msg": "stock_query", "sku": "widget", "available": 10}
+{"ts": 1793787376.168, "level": "INFO", "msg": "request", "request_id": "1f9e8128", "method": "GET", "path": "/stock/widget", "status": 200}
+{"ts": 1793787376.174, "level": "INFO", "msg": "order_created", "order_id": 1, "code": null, "pricing": {"subtotal": 6000, "discount": 0, "tax": 450, "shipping": 0, "total": 6450}, "stock_after": {"widget": 6}}
+{"ts": 1793787376.175, "level": "INFO", "msg": "request", "request_id": "9681fdf7", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787376.18, "level": "INFO", "msg": "order_cancelled", "order_id": 1, "status_before": "pending", "refund_cents": 6450, "units": 4, "stock_after": {"widget": 7}}
+{"ts": 1793787376.185, "level": "INFO", "msg": "request", "request_id": "1dd0c629", "method": "POST", "path": "/orders/1/cancel", "status": 200}
+{"ts": 1793787376.191, "level": "INFO", "msg": "stock_query", "sku": "widget", "available": 7}
+{"ts": 1793787376.191, "level": "INFO", "msg": "request", "request_id": "53f8f2e8", "method": "GET", "path": "/stock/widget", "status": 200}

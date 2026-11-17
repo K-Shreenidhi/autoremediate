@@ -1,0 +1,13 @@
+diff --git a/orders.py b/orders.py
+index 8d68246..020e0be 100644
+--- a/orders.py
++++ b/orders.py
+@@ -33,7 +33,7 @@ class OrderBook:
+                 self.inventory.reserve(line["sku"], line["qty"])
+                 reserved.append(line)
+         except (OutOfStock, ValueError):
+-            for done in reserved[:-1]:
++            for done in reserved:
+                 self.inventory.release(done["sku"], done["qty"])
+             raise
+         stamp = created_at or datetime.now(timezone.utc)

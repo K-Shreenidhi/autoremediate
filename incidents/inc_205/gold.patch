@@ -1,0 +1,14 @@
+diff --git a/orders.py b/orders.py
+index 78a2000..020e0be 100644
+--- a/orders.py
++++ b/orders.py
+@@ -64,7 +64,7 @@ class OrderBook:
+         if order["status"] != "pending":
+             raise OrderError(f"order {order_id} is {order['status']} and cannot be cancelled")
+         for line in order["lines"]:
+-            self.inventory.release(line["sku"], 1)
++            self.inventory.release(line["sku"], line["qty"])
+         order["status"] = "cancelled"
+         order["refund_cents"] = order["pricing"]["total"]
+         return order
+\ No newline at end of file

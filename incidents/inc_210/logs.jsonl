@@ -1,0 +1,6 @@
+{"ts": 1793787389.764, "level": "INFO", "msg": "order_created", "order_id": 1, "code": null, "pricing": {"subtotal": 1500, "discount": 0, "tax": 113, "shipping": 499, "total": 2112}, "stock_after": {"widget": 9}}
+{"ts": 1793787389.765, "level": "INFO", "msg": "request", "request_id": "a5ce3e13", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787389.771, "level": "INFO", "msg": "order_shipped", "order_id": 1}
+{"ts": 1793787389.772, "level": "INFO", "msg": "request", "request_id": "16957231", "method": "POST", "path": "/orders/1/ship", "status": 200}
+{"ts": 1793787389.777, "level": "INFO", "msg": "order_cancelled", "order_id": 1, "status_before": "shipped", "refund_cents": 2112, "units": 1, "stock_after": {"widget": 10}}
+{"ts": 1793787389.783, "level": "INFO", "msg": "request", "request_id": "2ea08a96", "method": "POST", "path": "/orders/1/cancel", "status": 200}

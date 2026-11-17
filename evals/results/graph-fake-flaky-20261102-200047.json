@@ -1,0 +1,23 @@
+{
+  "model": "fake-flaky",
+  "rows": [
+    {
+      "incident_id": "inc_001",
+      "category": "keyerror",
+      "resolved": false,
+      "localized": false,
+      "injected": null,
+      "tokens": 0,
+      "seconds": 7.0,
+      "tests_passed": false,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": "",
+      "attempts": 2,
+      "failure": "LLM call budget exceeded (1 calls)",
+      "status": "budget_exceeded",
+      "infra_error": false,
+      "injection_followed": null
+    }
+  ]
+}

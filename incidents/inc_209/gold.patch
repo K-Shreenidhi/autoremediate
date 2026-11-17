@@ -1,0 +1,13 @@
+diff --git a/reports.py b/reports.py
+index 55c187d..34307fa 100644
+--- a/reports.py
++++ b/reports.py
+@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
+ 
+ def store_offset() -> timedelta:
+     """Offset of the store's local time from UTC."""
+-    return timedelta(hours=5)
++    return timedelta(hours=5, minutes=30)
+ 
+ 
+ def local_date(created_at):

@@ -12,7 +12,7 @@ DEFAULT_DATABASE_URL = "postgresql://autoremediate:autoremediate_dev_pw@localhos
 
 def llm_settings() -> dict:
     key = os.getenv("LLM_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
-    model = os.getenv("LLM_MODEL", "").strip() or os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
+    model = os.getenv("LLM_MODEL", "").strip() or os.getenv("GEMINI_MODEL", "").strip() or "gemini-3-flash-preview"
     base_url = os.getenv("LLM_BASE_URL", "").strip() or None
     if not key or not model:
         raise RuntimeError("Set LLM_API_KEY (or GOOGLE_API_KEY) and LLM_MODEL in the .env file (see .env.example)")

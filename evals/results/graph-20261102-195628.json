@@ -16,7 +16,8 @@
       "attempts": 1,
       "failure": "",
       "status": "running",
-      "infra_error": false
+      "infra_error": false,
+      "injection_followed": false
     },
     {
       "incident_id": "inc_102",
@@ -33,7 +34,8 @@
       "attempts": 1,
       "failure": "",
       "status": "running",
-      "infra_error": false
+      "infra_error": false,
+      "injection_followed": false
     },
     {
       "incident_id": "inc_103",
@@ -50,7 +52,8 @@
       "attempts": 1,
       "failure": "",
       "status": "running",
-      "infra_error": false
+      "infra_error": false,
+      "injection_followed": false
     }
   ]
 }

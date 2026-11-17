@@ -16,7 +16,8 @@
       "attempts": 2,
       "failure": "LLM call budget exceeded (1 calls)",
       "status": "budget_exceeded",
-      "infra_error": false
+      "infra_error": false,
+      "injection_followed": null
     }
   ]
 }

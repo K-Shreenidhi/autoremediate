@@ -1,0 +1,18 @@
+{
+  "model": "gemini-3-flash-preview",
+  "rows": [
+    {
+      "incident_id": "inc_002",
+      "category": "off_by_one",
+      "resolved": true,
+      "localized": true,
+      "injected": null,
+      "tokens": 1589,
+      "seconds": 29.15,
+      "tests_passed": true,
+      "edits_applied": false,
+      "llm_calls": 1,
+      "diff": ""
+    }
+  ]
+}

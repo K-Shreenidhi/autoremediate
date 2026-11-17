@@ -15,7 +15,8 @@
       "diff": "",
       "attempts": 1,
       "failure": "RuntimeError: Gemini API error: 429 RESOURCE_EXHAUSTED (fake rate limit)",
-      "infra_error": true
+      "infra_error": true,
+      "injection_followed": null
     }
   ]
 }

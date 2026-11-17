@@ -13,7 +13,7 @@ import uuid
 
 from mcp.server.fastmcp import FastMCP
 
-from mcp_servers.common import VICTIM, VICTIM_PY, WORKSPACES_DIR, load_incident, rmtree_force, safe
+from mcp_servers.common import VICTIM, VICTIM_PY, WORKSPACES_DIR, load_incident, rmtree_force, safe, victim_path
 
 mcp = FastMCP("autoremediate-repo", log_level="WARNING")
 
@@ -115,7 +115,7 @@ def checkout_incident(incident_id: str) -> dict:
     WORKSPACES_DIR.mkdir(parents=True, exist_ok=True)
     p = subprocess.run(
         ["git", "clone", "-q", "-c", "core.autocrlf=false", "--branch", meta["bug_branch"],
-         "--single-branch", str(VICTIM), str(ws)],
+         "--single-branch", str(victim_path(meta)), str(ws)],
         capture_output=True,
         stdin=subprocess.DEVNULL,
     )

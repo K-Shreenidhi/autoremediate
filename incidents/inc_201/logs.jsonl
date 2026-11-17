@@ -1,0 +1,4 @@
+{"ts": 1793787365.032, "level": "INFO", "msg": "order_created", "order_id": 1, "code": "SAVE10", "pricing": {"subtotal": 9000, "discount": 900, "tax": 675, "shipping": 0, "total": 8775}, "stock_after": {"gizmo": 1, "gadget": 3}}
+{"ts": 1793787365.032, "level": "INFO", "msg": "request", "request_id": "7888bdc4", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787365.038, "level": "INFO", "msg": "order_created", "order_id": 2, "code": null, "pricing": {"subtotal": 1500, "discount": 0, "tax": 113, "shipping": 499, "total": 2112}, "stock_after": {"widget": 9}}
+{"ts": 1793787365.038, "level": "INFO", "msg": "request", "request_id": "f70df95d", "method": "POST", "path": "/orders", "status": 200}

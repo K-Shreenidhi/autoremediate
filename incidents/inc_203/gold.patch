@@ -1,0 +1,13 @@
+diff --git a/pricing.py b/pricing.py
+index e16ddc7..f939f27 100644
+--- a/pricing.py
++++ b/pricing.py
+@@ -13,7 +13,7 @@ def line_total(unit_cents: int, qty: int) -> int:
+ 
+ def discount_cents(subtotal: int, code) -> int:
+     pct = COUPONS.get(code or "", 0)
+-    return subtotal * pct // 100
++    return div_round_half_up(subtotal * pct, 100)
+ 
+ 
+ def tax_cents(taxable: int) -> int:

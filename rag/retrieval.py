@@ -1,5 +1,6 @@
 """Hybrid retrieval: BM25 + dense embeddings fused with reciprocal rank fusion,
 plus an optional cross-encoder reranker."""
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -27,10 +28,14 @@ def tokenize(text: str) -> list:
 
 
 def load_corpus() -> list:
-    """Doc sections from corpus/docs plus function-level chunks of the victim's main.py (main branch)."""
+    """Doc sections from corpus/docs (plus corpus/docs_v2 when AUTOREMEDIATE_RAG_CORPUS=all) and function-level chunks of the victim's main.py (main branch)."""
     chunks = []
-    for path in sorted(DOCS_DIR.glob("*.md")):
-        chunks += chunk_markdown(path.read_text(encoding="utf-8"), path.name)
+    doc_dirs = [DOCS_DIR]
+    if os.getenv("AUTOREMEDIATE_RAG_CORPUS", "").strip().lower() == "all":
+        doc_dirs.append(ROOT / "corpus" / "docs_v2")
+    for doc_dir in doc_dirs:
+        for path in sorted(doc_dir.glob("*.md")):
+            chunks += chunk_markdown(path.read_text(encoding="utf-8"), path.name)
     code = subprocess.run(["git", "show", "main:main.py"], cwd=VICTIM, capture_output=True, check=True).stdout.decode("utf-8")
     chunks += chunk_python(code, "main.py")
     return chunks

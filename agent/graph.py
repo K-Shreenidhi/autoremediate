@@ -22,7 +22,7 @@ from rag.context import rag_context
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUTS_DIR = ROOT / "outputs"
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = int(os.getenv("AUTOREMEDIATE_MAX_ATTEMPTS", "3"))
 MAX_LLM_CALLS = int(os.getenv("AUTOREMEDIATE_MAX_LLM_CALLS", "8"))
 MAX_SECONDS = float(os.getenv("AUTOREMEDIATE_MAX_SECONDS", "600"))
 MAX_PROMPT_CHARS = int(os.getenv("AUTOREMEDIATE_MAX_PROMPT_CHARS", "60000"))
@@ -38,6 +38,17 @@ def is_transient(error: Exception) -> bool:
     text = f"{type(error).__name__}: {error}".lower()
     return any(marker in text for marker in TRANSIENT_MARKERS)
 
+CONFIG_MARKERS = ("404", "not_found", "not found", "401", "403", "permission", "unauthorized", "unauthenticated",
+                  "invalid api key", "api key not valid", "api_key_invalid", "invalid_argument", "authentication",
+                  "model_not_found")
+
+
+def is_config_error(error: Exception) -> bool:
+    """True for permanent setup problems (unknown model, bad API key). Retrying cannot help and it is not the patch's fault."""
+    if type(error).__name__ == "LLMError" or is_transient(error):
+        return False
+    text = f"{type(error).__name__}: {error}".lower()
+    return any(marker in text for marker in CONFIG_MARKERS)
 
 def budget_reason(state: dict, prompt: str) -> str:
     if time.time() - state.get("started_at", time.time()) > MAX_SECONDS:
@@ -152,7 +163,9 @@ def build_graph(tools, llm, checkpointer):
                 if r.get("ok"):
                     sources[name] = _strip_numbers(r["content"])
         base["sources"] = sources
-        base["prompt_base"] = rag_context(ticket, errors) + build_prompt(ticket, errors, status, warnings, ci, sources)
+        rag_enabled = os.getenv("AUTOREMEDIATE_RAG", "1").strip() != "0"
+        rag_prefix = rag_context(ticket, errors) if rag_enabled else ""
+        base["prompt_base"] = rag_prefix + build_prompt(ticket, errors, status, warnings, ci, sources)
         return base
 
     def after_ingest(state: State) -> str:
@@ -184,7 +197,7 @@ def build_graph(tools, llm, checkpointer):
             return {
                 "attempt": state["attempt"],
                 "human_edit": False,
-                "proposal": {"error": f"{type(error).__name__}: {str(error)[:300]}", "edits": [], "infra": is_transient(error)},
+                "proposal": {"error": f"{type(error).__name__}: {str(error)[:300]}", "edits": [], "infra": is_transient(error) or is_config_error(error)},
             }
         return {
             "attempt": state["attempt"],

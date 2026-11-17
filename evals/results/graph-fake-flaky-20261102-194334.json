@@ -16,7 +16,8 @@
       "attempts": 2,
       "failure": "",
       "status": "running",
-      "infra_error": false
+      "infra_error": false,
+      "injection_followed": null
     }
   ]
 }

@@ -1,0 +1,8 @@
+{"ts": 1793787378.858, "level": "WARNING", "msg": "order_rejected", "reason": "gizmo: wanted 3, have 2", "items": [{"sku": "widget", "qty": 2}, {"sku": "gizmo", "qty": 3}]}
+{"ts": 1793787378.859, "level": "INFO", "msg": "request", "request_id": "d5d8f671", "method": "POST", "path": "/orders", "status": 409}
+{"ts": 1793787378.865, "level": "INFO", "msg": "stock_query", "sku": "widget", "available": 8}
+{"ts": 1793787378.865, "level": "INFO", "msg": "request", "request_id": "4408df97", "method": "GET", "path": "/stock/widget", "status": 200}
+{"ts": 1793787378.87, "level": "INFO", "msg": "stock_query", "sku": "gizmo", "available": 2}
+{"ts": 1793787378.873, "level": "INFO", "msg": "request", "request_id": "f223cbb1", "method": "GET", "path": "/stock/gizmo", "status": 200}
+{"ts": 1793787378.879, "level": "INFO", "msg": "order_created", "order_id": 1, "code": null, "pricing": {"subtotal": 1500, "discount": 0, "tax": 113, "shipping": 499, "total": 2112}, "stock_after": {"widget": 7}}
+{"ts": 1793787378.879, "level": "INFO", "msg": "request", "request_id": "8ccf7d15", "method": "POST", "path": "/orders", "status": 200}

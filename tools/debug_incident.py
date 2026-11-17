@@ -63,7 +63,7 @@ def main() -> None:
         except RuntimeError as e:
             raise SystemExit(str(e))
     llm = CountingLLM(llm)
-
+    print("model:", llm.model)
     with SyncTools() as tools:
         graph = build_graph(tools, llm, InMemorySaver())
         for inc in args.incidents:

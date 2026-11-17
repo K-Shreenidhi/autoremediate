@@ -1,0 +1,13 @@
+diff --git a/reports.py b/reports.py
+index e8b6075..34307fa 100644
+--- a/reports.py
++++ b/reports.py
+@@ -15,7 +15,7 @@ def daily_report(orders: list) -> dict:
+     """Order count and revenue (cents) per local date."""
+     report = {}
+     for order in orders:
+-        if order["status"] == "refunded":
++        if order["status"] == "cancelled":
+             continue
+         key = local_date(order["created_at"]).isoformat()
+         day = report.setdefault(key, {"orders": 0, "revenue_cents": 0})

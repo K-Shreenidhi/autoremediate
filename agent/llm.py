@@ -29,7 +29,7 @@ T = TypeVar("T", bound=BaseModel)
 
 # ── Defaults ─────────────────────────────────────────────────────────────────
 
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 # Hard budgets per incident (can be overridden via env)
 MAX_LLM_CALLS = int(os.getenv("MAX_LLM_CALLS", "15"))
@@ -38,12 +38,26 @@ MAX_COMPLETION_TOKENS = int(os.getenv("MAX_COMPLETION_TOKENS", "20000"))
 
 # Rough pricing (per 1M tokens) — used for cost reporting only
 PRICING = {
+    "gemini-3-flash-preview": {"input": 0.15, "output": 0.60},
+    "gemini-3.5-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.5-flash-lite": {"input": 0.075, "output": 0.30},
     "gemini-3.1-flash-lite": {"input": 0.075, "output": 0.30},
     "gemini-3.8-flash": {"input": 0.15, "output": 0.60},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
+}
+
+# Automatic aliases for deprecated/unavailable Google model identifiers
+MODEL_ALIASES = {
+    "gemini-2.5-flash": "gemini-3.5-flash",
+    "models/gemini-2.5-flash": "gemini-3.5-flash",
+    "gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "models/gemini-2.5-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+    "models/gemini-3.1-flash-lite": "gemini-3.5-flash-lite",
+    "gemini-3.8-flash": "gemini-3.5-flash",
+    "models/gemini-3.8-flash": "gemini-3.5-flash",
 }
 
 
@@ -95,6 +109,8 @@ class GeminiClient:
     _client: object = field(default=None, repr=False)
 
     def __post_init__(self):
+        if self.model in MODEL_ALIASES:
+            self.model = MODEL_ALIASES[self.model]
         if not self.api_key:
             self.api_key = os.getenv("GOOGLE_API_KEY", "")
         if not self.api_key:
@@ -114,6 +130,26 @@ class GeminiClient:
             raise BudgetExhausted(
                 f"Prompt token budget exhausted: {self.metrics.prompt_tokens}/{MAX_PROMPT_TOKENS}"
             )
+
+    def _call_api(self, config, contents):
+        delays = [2.0, 5.0, 10.0]
+        last_exc = None
+        for attempt in range(len(delays) + 1):
+            try:
+                return self._client.models.generate_content(
+                    model=self.model,
+                    contents=contents,
+                    config=config,
+                )
+            except Exception as e:
+                last_exc = e
+                msg = str(e).lower()
+                is_transient = any(m in msg for m in ("503", "429", "unavailable", "resource_exhausted", "high demand", "spikes in demand"))
+                if is_transient and attempt < len(delays):
+                    time.sleep(delays[attempt])
+                    continue
+                raise
+        raise last_exc
 
     def generate(
         self,
@@ -140,11 +176,7 @@ class GeminiClient:
 
         t0 = time.time()
         try:
-            response = self._client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+            response = self._call_api(config=config, contents=prompt)
             elapsed = time.time() - t0
         except Exception as e:
             self.metrics.errors += 1
@@ -179,11 +211,7 @@ class GeminiClient:
 
         t0 = time.time()
         try:
-            response = self._client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+            response = self._call_api(config=config, contents=prompt)
             elapsed = time.time() - t0
         except Exception as e:
             self.metrics.errors += 1
@@ -202,7 +230,8 @@ class LLMClient:
     """Standard LLM client adapter for agent.graph and agent.run."""
     def __init__(self, api_key: str = "", model: str = "", base_url: str = None):
         self.api_key = api_key or os.getenv("LLM_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-        self.model = model or os.getenv("LLM_MODEL", "") or DEFAULT_MODEL
+        raw_model = model or os.getenv("LLM_MODEL", "") or DEFAULT_MODEL
+        self.model = MODEL_ALIASES.get(raw_model, raw_model)
         self.base_url = base_url or os.getenv("LLM_BASE_URL", None)
         self._gemini = None
         self._openai = None
@@ -246,4 +275,18 @@ class LLMClient:
             )
             raw_text = res.model_dump_json() if hasattr(res, "model_dump_json") else json.dumps(res.model_dump())
             return res, usage, raw_text
+        raise RuntimeError("No working LLM backend (neither Gemini nor OpenAI could be initialized)")
+
+    def generate_text(self, prompt: str, system: str = "") -> str:
+        if self._gemini is not None and ("gemini" in self.model or self.api_key.startswith("AIza") or self.api_key.startswith("AQ.")):
+            return self._gemini.generate_text(prompt, system_instruction=system)
+        if self._openai is not None:
+            messages = []
+            if system:
+                messages.append({"role": "system", "content": system})
+            messages.append({"role": "user", "content": prompt})
+            resp = self._openai.chat.completions.create(model=self.model, messages=messages)
+            return resp.choices[0].message.content or ""
+        if self._gemini is not None:
+            return self._gemini.generate_text(prompt, system_instruction=system)
         raise RuntimeError("No working LLM backend (neither Gemini nor OpenAI could be initialized)")

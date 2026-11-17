@@ -1,0 +1,2 @@
+{"ts": 1793787387.007, "level": "INFO", "msg": "daily_report", "days": ["2026-01-01"], "report_orders": 2, "book_orders": 2, "book_cancelled": 0}
+{"ts": 1793787387.007, "level": "INFO", "msg": "request", "request_id": "3a8a8713", "method": "GET", "path": "/reports/daily", "status": 200}

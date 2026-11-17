@@ -1,0 +1,8 @@
+{"ts": 1793787381.473, "level": "INFO", "msg": "order_created", "order_id": 1, "code": null, "pricing": {"subtotal": 1500, "discount": 0, "tax": 113, "shipping": 499, "total": 2112}, "stock_after": {"widget": 9}}
+{"ts": 1793787381.474, "level": "INFO", "msg": "request", "request_id": "54db5647", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787381.481, "level": "INFO", "msg": "order_created", "order_id": 2, "code": null, "pricing": {"subtotal": 2500, "discount": 0, "tax": 188, "shipping": 499, "total": 3187}, "stock_after": {"gadget": 4}}
+{"ts": 1793787381.481, "level": "INFO", "msg": "request", "request_id": "efa8a2d9", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787381.493, "level": "INFO", "msg": "order_cancelled", "order_id": 2, "status_before": "pending", "refund_cents": 3187, "units": 1, "stock_after": {"gadget": 5}}
+{"ts": 1793787381.494, "level": "INFO", "msg": "request", "request_id": "ae539209", "method": "POST", "path": "/orders/2/cancel", "status": 200}
+{"ts": 1793787381.5, "level": "INFO", "msg": "daily_report", "days": ["2026-11-04"], "report_orders": 2, "book_orders": 2, "book_cancelled": 1}
+{"ts": 1793787381.5, "level": "INFO", "msg": "request", "request_id": "63587516", "method": "GET", "path": "/reports/daily", "status": 200}

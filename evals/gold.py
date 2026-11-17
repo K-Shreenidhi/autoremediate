@@ -1,13 +1,16 @@
 """Ground-truth definitions and gold patches for AutoRemediate incidents."""
 from __future__ import annotations
 
+import ast
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 INCIDENTS_DIR = ROOT / "incidents"
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 @dataclass
@@ -94,16 +97,84 @@ GOLD_INCIDENTS: Dict[str, GoldIncident] = {
 }
 
 
+def parse_gold(incident_id: str) -> dict:
+    """Parse incidents/<id>/gold.patch (bug -> fixed) into the changed text and line numbers."""
+    text = (INCIDENTS_DIR / incident_id / "gold.patch").read_bytes().decode("utf-8")
+    lines = text.split("\n")
+    path, removed, added, removed_lines = None, [], [], []
+    i = 0
+    while i < len(lines):
+        ln = lines[i].rstrip("\r")
+        if ln.startswith("+++ b/"):
+            path = ln[6:]
+        m = HUNK_RE.match(ln)
+        if not m:
+            i += 1
+            continue
+        old_ln = int(m.group(1))
+        old_left = int(m.group(2)) if m.group(2) is not None else 1
+        new_left = int(m.group(4)) if m.group(4) is not None else 1
+        i += 1
+        while (old_left > 0 or new_left > 0) and i < len(lines):
+            body = lines[i].rstrip("\r")
+            tag = body[:1]
+            if tag == "-":
+                removed.append(body[1:])
+                removed_lines.append(old_ln)
+                old_ln += 1
+                old_left -= 1
+            elif tag == "+":
+                added.append(body[1:])
+                new_left -= 1
+            elif tag in (" ", ""):
+                old_ln += 1
+                old_left -= 1
+                new_left -= 1
+            i += 1
+    return {"path": path, "old": "\n".join(removed), "new": "\n".join(added), "removed_lines": removed_lines}
+
+
+def gold_function(source: str, line_no: int):
+    """Name of the innermost function containing line_no, or None."""
+    best = None
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.lineno <= line_no <= node.end_lineno:
+            if best is None or node.lineno > best.lineno:
+                best = node
+    return best.name if best else None
+
+
 def get_gold(incident_id: str) -> GoldIncident:
     """Return ground truth for an incident ID."""
-    if incident_id not in GOLD_INCIDENTS:
-        raise KeyError(f"Unknown incident: {incident_id}")
-    return GOLD_INCIDENTS[incident_id]
+    if incident_id in GOLD_INCIDENTS:
+        return GOLD_INCIDENTS[incident_id]
+    meta_path = INCIDENTS_DIR / incident_id / "incident.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        patch_path = INCIDENTS_DIR / incident_id / "gold.patch"
+        parsed = parse_gold(incident_id) if patch_path.exists() else {}
+        return GoldIncident(
+            incident_id=incident_id,
+            category=meta.get("category", ""),
+            ticket=meta.get("ticket", ""),
+            failing_test=meta.get("failing_test", ""),
+            file=meta.get("gold_root_cause_file", parsed.get("path", "")),
+            function=meta.get("gold_function", ""),
+            line=parsed.get("removed_lines", [0])[0] if parsed.get("removed_lines") else 0,
+            root_cause=meta.get("gold_root_cause", ""),
+            old_text=parsed.get("old", ""),
+            new_text=parsed.get("new", ""),
+            injection_in_logs=bool(meta.get("injection_in_logs", False)),
+        )
+    raise KeyError(f"Unknown incident: {incident_id}")
 
 
 def get_all_incident_ids() -> List[str]:
     """Return all known incident IDs in sorted order."""
-    return sorted(GOLD_INCIDENTS.keys())
+    ids = set(GOLD_INCIDENTS.keys())
+    if INCIDENTS_DIR.exists():
+        ids.update(p.name for p in INCIDENTS_DIR.iterdir() if p.is_dir() and (p / "incident.json").exists())
+    return sorted(ids)
 
 
 def load_gold_patch(incident_id: str) -> str:
@@ -114,24 +185,43 @@ def load_gold_patch(incident_id: str) -> str:
     return patch_file.read_text(encoding="utf-8")
 
 
-def parse_gold(incident_id: str) -> dict:
-    gold = get_gold(incident_id)
-    return {
-        "path": gold.file,
-        "old": gold.old_text,
-        "new": gold.new_text,
-        "removed_lines": [gold.old_text.strip()],
-    }
+
+def get_gold(incident_id: str) -> GoldIncident:
+    """Return ground truth for an incident ID."""
+    if incident_id in GOLD_INCIDENTS:
+        return GOLD_INCIDENTS[incident_id]
+    meta_path = INCIDENTS_DIR / incident_id / "incident.json"
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        patch_path = INCIDENTS_DIR / incident_id / "gold.patch"
+        parsed = parse_gold(incident_id) if patch_path.exists() else {}
+        return GoldIncident(
+            incident_id=incident_id,
+            category=meta.get("category", ""),
+            ticket=meta.get("ticket", ""),
+            failing_test=meta.get("failing_test", ""),
+            file=meta.get("gold_root_cause_file", parsed.get("path", "")),
+            function=meta.get("gold_function", ""),
+            line=parsed.get("removed_lines", [0])[0] if parsed.get("removed_lines") else 0,
+            root_cause=meta.get("gold_root_cause", ""),
+            old_text=parsed.get("old", ""),
+            new_text=parsed.get("new", ""),
+            injection_in_logs=bool(meta.get("injection_in_logs", False)),
+        )
+    raise KeyError(f"Unknown incident: {incident_id}")
 
 
-def gold_function(source: str, target_line: str) -> str:
-    """Find the function name enclosing target_line in Python source code."""
-    current_fn = "unknown"
-    for line in source.splitlines():
-        trimmed = line.strip()
-        if trimmed.startswith("def "):
-            current_fn = trimmed.split("def ")[1].split("(")[0].strip()
-        if target_line.strip() in trimmed:
-            return current_fn
-    return current_fn
+def get_all_incident_ids() -> List[str]:
+    """Return all known incident IDs in sorted order."""
+    ids = set(GOLD_INCIDENTS.keys())
+    if INCIDENTS_DIR.exists():
+        ids.update(p.name for p in INCIDENTS_DIR.iterdir() if p.is_dir() and (p / "incident.json").exists())
+    return sorted(ids)
 
+
+def load_gold_patch(incident_id: str) -> str:
+    """Read the gold unified diff patch file for an incident."""
+    patch_file = INCIDENTS_DIR / incident_id / "gold.patch"
+    if not patch_file.exists():
+        raise FileNotFoundError(f"gold.patch not found for {incident_id}")
+    return patch_file.read_text(encoding="utf-8")

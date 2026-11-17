@@ -1,0 +1,13 @@
+diff --git a/pricing.py b/pricing.py
+index 25c09d2..f939f27 100644
+--- a/pricing.py
++++ b/pricing.py
+@@ -21,7 +21,7 @@ def tax_cents(taxable: int) -> int:
+ 
+ 
+ def shipping_cents(discounted_subtotal: int) -> int:
+-    return 0 if discounted_subtotal > FREE_SHIPPING_FROM else SHIPPING_CENTS
++    return 0 if discounted_subtotal >= FREE_SHIPPING_FROM else SHIPPING_CENTS
+ 
+ 
+ def price_order(lines: list, code=None) -> dict:

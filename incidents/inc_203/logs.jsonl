@@ -1,0 +1,4 @@
+{"ts": 1793787370.633, "level": "INFO", "msg": "order_created", "order_id": 1, "code": "SAVE10", "pricing": {"subtotal": 1295, "discount": 129, "tax": 87, "shipping": 499, "total": 1752}, "stock_after": {"gasket": 19}}
+{"ts": 1793787370.633, "level": "INFO", "msg": "request", "request_id": "61b0d94e", "method": "POST", "path": "/orders", "status": 200}
+{"ts": 1793787370.639, "level": "INFO", "msg": "order_created", "order_id": 2, "code": "SAVE10", "pricing": {"subtotal": 3885, "discount": 388, "tax": 262, "shipping": 499, "total": 4258}, "stock_after": {"gasket": 16}}
+{"ts": 1793787370.64, "level": "INFO", "msg": "request", "request_id": "42582b5c", "method": "POST", "path": "/orders", "status": 200}
