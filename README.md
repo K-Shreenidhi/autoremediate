@@ -284,6 +284,6 @@ Python 3.11+ · LangGraph 1.2 · PostgreSQL (checkpointer) · Model Context Prot
 
 <div align="center">
 
-Built by **<Shreenidhi K>**  · <shreenidhi.kuntnal06@gmail.com>
+Built by <Shreenidhi K>  · <shreenidhi.kuntnal06@gmail.com>
 
 </div>
