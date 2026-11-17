@@ -276,7 +276,6 @@ SECURITY.md   what the agent cannot do, and its limits
 - [ ] Open a real GitHub pull request on approval
 - [ ] Incidents that need multi-file patches
 
-DEMO :
 https://github.com/user-attachments/assets/d8af41aa-d6a9-4d0c-a43e-c93c5b00602b
 
 
